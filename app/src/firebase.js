@@ -58,6 +58,11 @@ const legacyDatabaseURL = `http://${
   typeof window !== "undefined" ? window.location.hostname || "localhost" : "localhost"
 }:9000?ns=${PROJECT_ID}`;
 
+// True when at least one VITE_FIREBASE_*_URL is set — indicates HTTPS subdomain mode.
+// In that mode we never fall back to port-based localhost URLs; missing services are
+// left unconnected rather than silently pointed at an address that can't work.
+const anyServiceUrlSet = Object.values(SERVICE_URLS).some(Boolean);
+
 const selfHostedConfig = {
   apiKey: "self-hosted-api-key",
   authDomain: SERVICE_URLS.auth?.host ?? "self-hosted.local",
@@ -65,6 +70,8 @@ const selfHostedConfig = {
   // belongs in the app config rather than a separate `connect*Emulator` call.
   databaseURL: SERVICE_URLS.database?.url
     ? `${SERVICE_URLS.database.url}?ns=${PROJECT_ID}`
+    : anyServiceUrlSet
+    ? undefined // HTTPS mode: no explicit database URL → don't fall back to a bad address
     : process.env.VITE_REACT_APP_FIREBASE_DATABASE_URL || legacyDatabaseURL,
   projectId: PROJECT_ID,
   storageBucket: `${PROJECT_ID}.appspot.com`,
@@ -144,30 +151,13 @@ const connectHttpsServices = () => {
   console.log("CONNECTED TO HTTPS EMULATOR SUBDOMAINS");
 };
 
-const anyServiceUrlSet = Object.values(SERVICE_URLS).some(Boolean);
-
 if (isSelfHosted()) {
   if (anyServiceUrlSet) {
     connectHttpsServices();
-    // Fall back to localhost-style HTTP for any service whose URL wasn't set
-    // (useful for mixed setups, e.g. testing the SPA over a proxy while the
-    // emulators stay local).
-    const fallbackHost = typeof window !== "undefined" ? window.location.hostname || "localhost" : "localhost";
-    if (!SERVICE_URLS.functions) {
-      connectFunctionsEmulator(getFunctions(firebaseApp), fallbackHost, 5001);
-    }
-    if (!SERVICE_URLS.storage) {
-      connectStorageEmulator(getStorage(), fallbackHost, 9199);
-    }
-    if (!SERVICE_URLS.firestore) {
-      connectFirestoreEmulator(getFirestore(), fallbackHost, 8080);
-    }
-    if (!SERVICE_URLS.database) {
-      connectDatabaseEmulator(getDatabase(), fallbackHost, 9000);
-    }
-    if (!SERVICE_URLS.auth) {
-      connectAuthEmulator(getAuth(), `http://${fallbackHost}:9099`, { disableWarnings: true });
-    }
+    // In HTTPS mode every service must have its own VITE_FIREBASE_*_URL.
+    // We intentionally do NOT fall back to window.hostname:port for missing
+    // services — the emulator bind address (0.0.0.0) is never reachable from
+    // a browser, and a clear connection failure is better than a silent one.
   } else {
     // No subdomain env vars set → legacy "everything on the SPA's hostname"
     // wiring. This is the Docker default.
