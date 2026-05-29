@@ -1,0 +1,57 @@
+# Self-hosted Requestly stack.
+#
+# Run from the repo root:
+#   docker compose -f docker/docker-compose.yml up --build
+#
+# Then open http://localhost:3000 in a browser. First sign-up creates the user
+# (the Firebase Auth Emulator accepts any email/password).
+#
+# Ports used on the host:
+#   3000 — SPA (nginx)
+#   4000 — Firebase Emulator UI
+#   5001 — Cloud functions
+#   8080 — Firestore
+#   9000 — RTDB
+#   9099 — Auth
+#   9199 — Storage
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    image: requestly-self-hosted/app:latest
+    ports:
+      - "3005:80"
+    depends_on:
+      - functions
+    restart: unless-stopped
+
+  # The Firebase Emulator Suite runs all 5 backend services (auth, firestore, RTDB,
+  # storage, functions) in one container. The SPA's firebase.js auto-detects the
+  # self-hosted flag and points the SDK at these ports on the same hostname.
+  functions:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.functions
+    image: requestly-self-hosted/functions:latest
+    # SMTP credentials + public app URL come in via server/.env (gitignored).
+    # See server/.env.example for the keys.
+    env_file:
+      - ../server/.env
+    # Give the emulator suite enough time to export firestore/RTDB/auth state to
+    # /data/export on shutdown. Default 10s is sometimes too tight.
+    stop_grace_period: 45s
+    ports:
+      - "4000:4000"   # Emulator UI
+      - "5001:5001"   # Cloud functions
+      - "8080:8080"   # Firestore
+      - "9000:9000"   # RTDB
+      - "9099:9099"   # Auth
+      - "9199:9199"   # Storage
+    volumes:
+      - emulator-data:/data
+    restart: unless-stopped
+
+volumes:
+  emulator-data:

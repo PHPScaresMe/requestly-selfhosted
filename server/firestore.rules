@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Permissive rules for self-hosted Requestly. The whole instance is assumed to be a trust
+// boundary — only authenticated users can read/write, but they can read/write anything.
+// Tighten if you need multi-tenant isolation.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

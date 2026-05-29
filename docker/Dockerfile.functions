@@ -1,0 +1,39 @@
+# Firebase Emulator Suite + our cloud function implementations.
+# The emulator suite is distributed as part of firebase-tools; we run it in
+# a long-lived container exposing all the emulator ports.
+
+FROM node:20-bookworm-slim
+WORKDIR /server
+
+# OpenJDK is needed by the firestore/database/auth/storage emulators.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openjdk-17-jre-headless curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install firebase-tools globally so we can run `firebase emulators:start`.
+RUN npm install -g firebase-tools@13
+
+# Copy and build the cloud functions.
+COPY server/functions/package.json server/functions/tsconfig.json ./functions/
+RUN cd functions && npm install --no-audit --no-fund
+COPY server/functions/src ./functions/src
+RUN cd functions && npm run build
+
+# Firebase config / rules.
+COPY server/firebase.json ./
+COPY server/firestore.rules ./
+COPY server/database.rules.json ./
+COPY server/storage.rules ./
+
+EXPOSE 4000 5001 8080 9000 9099 9199
+
+# `--project requestly-self-hosted` must match the projectId the SPA uses.
+# `--import` + `--export-on-exit` persist emulator state. We point both at
+# /data/export (a *subdirectory* of the mounted volume) because firebase-tools
+# rmdir's the export target on shutdown and would EBUSY against the mount root.
+# `exec` is mandatory so SIGTERM from docker stop reaches firebase-tools rather
+# than the wrapping sh — otherwise --export-on-exit never fires.
+COPY docker/functions-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+CMD ["/usr/local/bin/entrypoint.sh"]

@@ -1,0 +1,7 @@
+{
+  "WEB_URL": "http://localhost:3005",
+  "SESSIONS_URL": "http://localhost:3005/sessions",
+  "OTHER_WEB_URLS": [],
+  "LANDING_PAGE_BASE_URL": "http://localhost:3005",
+  "logLevel": "info"
+}
